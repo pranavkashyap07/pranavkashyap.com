@@ -167,6 +167,23 @@
       border-color: var(--green);
     }
 
+    .mode-select {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    .mode-select button[aria-pressed="true"] {
+      border-color: var(--green);
+      color: var(--green);
+      background: rgba(118,247,189,.08);
+    }
+
     .controls {
       display: flex;
       justify-content: center;
@@ -234,13 +251,19 @@
       </div>
     </div>
 
+    <div class="mode-select" role="group" aria-label="Difficulty">
+      <span>Difficulty:</span>
+      <button type="button" id="normalModeBtn" aria-pressed="true">Normal</button>
+      <button type="button" id="easyModeBtn" aria-pressed="false">Easy</button>
+    </div>
+
     <div class="canvas-wrap" id="canvasWrap">
       <canvas id="board" width="400" height="400"
               aria-label="Snake game board"></canvas>
 
       <div class="overlay" id="overlay">
         <h2 id="overlayTitle">Ready to play?</h2>
-        <p id="overlayText">Collect the glowing dots. Don't hit the walls or yourself.</p>
+        <p id="overlayText">Collect the glowing dots. Avoid running into yourself.</p>
         <button class="primary" id="startBtn">Start game →</button>
       </div>
     </div>
@@ -274,6 +297,8 @@
       const pauseBtn = document.getElementById("pauseBtn");
       const scoreEl = document.getElementById("score");
       const bestEl = document.getElementById("best");
+      const normalModeBtn = document.getElementById("normalModeBtn");
+      const easyModeBtn = document.getElementById("easyModeBtn");
 
       const CELLS = 20;
       const SIZE = canvas.width / CELLS;
@@ -285,6 +310,7 @@
       let timer = null;
       let state = "ready";
       let touchStart = null;
+      let mode = "normal";
 
       bestEl.textContent = best;
 
@@ -344,8 +370,25 @@
 
       function schedule() {
         clearInterval(timer);
-        const speed = Math.max(65, 145 - score * 3);
+        // Easy mode is slower and stays at a relaxed, consistent pace.
+        const speed = mode === "easy" ? 220 : Math.max(65, 145 - score * 3);
         timer = setInterval(tick, speed);
+      }
+
+      function chooseMode(nextMode) {
+        if (mode === nextMode) return;
+        mode = nextMode;
+        normalModeBtn.setAttribute("aria-pressed", String(mode === "normal"));
+        easyModeBtn.setAttribute("aria-pressed", String(mode === "easy"));
+
+        // Apply the new speed immediately if a game is already running.
+        if (state === "playing") schedule();
+
+        if (state === "ready") {
+          overlayText.textContent = mode === "easy"
+            ? "Easy mode: slower movement and wrap-around walls. Avoid yourself."
+            : "Collect the glowing dots. Avoid running into yourself.";
+        }
       }
 
       function showOverlay(title, message, buttonText) {
@@ -403,17 +446,25 @@
         if (state !== "playing") return;
 
         direction = nextDirection;
-        const head = {
+        let head = {
           x: snake[0].x + direction.x,
           y: snake[0].y + direction.y
         };
+
+        if (mode === "easy") {
+          // Wrap through the edge instead of dying at a wall.
+          head.x = (head.x + CELLS) % CELLS;
+          head.y = (head.y + CELLS) % CELLS;
+        }
 
         const eating = food &&
           head.x === food.x && head.y === food.y;
 
         const body = eating ? snake : snake.slice(0, -1);
-        const collision = head.x < 0 || head.x >= CELLS ||
-          head.y < 0 || head.y >= CELLS ||
+        const wallCollision = mode === "normal" &&
+          (head.x < 0 || head.x >= CELLS ||
+           head.y < 0 || head.y >= CELLS);
+        const collision = wallCollision ||
           body.some(part => part.x === head.x && part.y === head.y);
 
         if (collision) {
@@ -520,6 +571,9 @@
           }
         }
       }
+
+      normalModeBtn.addEventListener("click", () => chooseMode("normal"));
+      easyModeBtn.addEventListener("click", () => chooseMode("easy"));
 
       startBtn.addEventListener("click", () => {
         if (state === "paused") {
